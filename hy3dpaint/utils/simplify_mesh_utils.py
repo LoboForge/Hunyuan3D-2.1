@@ -12,6 +12,8 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
+import os
+
 import trimesh
 import pymeshlab
 
@@ -21,6 +23,7 @@ def remesh_mesh(mesh_path, remesh_path):
 
 
 def mesh_simplify_trimesh(inputpath, outputpath, target_count=40000):
+    target_count = int(os.environ.get("HUNYUAN_REMESH_FACES", target_count))
     # 先去除离散面
     ms = pymeshlab.MeshSet()
     if inputpath.endswith(".glb"):
@@ -33,5 +36,15 @@ def mesh_simplify_trimesh(inputpath, outputpath, target_count=40000):
     face_num = courent.faces.shape[0]
 
     if face_num > target_count:
-        courent = courent.simplify_quadric_decimation(target_count)
+        # Newer trimesh+fast_simplification expect target_reduction in [0,1]
+        # when using the keyword API; pass an explicit reduction instead.
+        try:
+            reduction = 1.0 - (float(target_count) / float(face_num))
+            reduction = min(0.99, max(0.0, reduction))
+            courent = courent.simplify_quadric_decimation(percent=reduction)
+        except TypeError:
+            try:
+                courent = courent.simplify_quadric_decimation(face_count=target_count)
+            except TypeError:
+                courent = courent.simplify_quadric_decimation(target_count)
     courent.export(outputpath)
